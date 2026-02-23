@@ -264,7 +264,21 @@ def _collect_mes_venda_options(dframe):
             if mk:
                 opts.add(mk)
 
+
+    # Se a planilha não traz o ano no "Mês da Venda" (ex: só "Janeiro"),
+    # o parsing pode ficar limitado. Para manter o filtro completo (Jan..Dez),
+    # expandimos os meses para cada ano detectado.
+    if opts:
+        years = sorted({y for (y, m) in opts})
+        expanded = set(opts)
+        for y in years:
+            for m in range(1, 13):
+                expanded.add((y, m))
+        opts = expanded
+
     return sorted(list(opts), key=lambda x: (x[0], x[1]))
+
+
 
 all_mes_venda = _collect_mes_venda_options(df)
 
