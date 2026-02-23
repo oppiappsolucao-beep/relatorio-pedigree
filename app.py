@@ -202,15 +202,40 @@ def row_fallback_year(row):
     return dt.date.today().year
 
 def get_mes_venda_key(row):
-    fy = row_fallback_year(row)
-    if COL_MES_VENDA and COL_MES_VENDA in row and pd.notna(row[COL_MES_VENDA]):
-        mk = parse_mes(row[COL_MES_VENDA], fallback_year=fy)
-        if mk:
-            return mk
+    """Retorna (ano, mês) para a linha.
+
+    Prioridade:
+    1) Usa Data da Venda (se existir) para garantir o ano correto
+    2) Se Mês da Venda tiver ano explícito (ex: 01/2026), usa ele
+    3) Se Mês da Venda for só nome do mês (ex: Janeiro), usa o mês + ano da Data da Venda (ou ano atual)
+    """
+    # 1) Data da Venda (ano/mês mais confiável)
+    dt = None
+    date_key = None
     if COL_DATA and COL_DATA in row and pd.notna(row[COL_DATA]):
-        mk2 = parse_mes(row[COL_DATA], fallback_year=fy)
-        if mk2:
-            return mk2
+        dt = parse_date_any(row[COL_DATA])
+        if dt:
+            date_key = (dt.year, dt.month)
+
+    # 2) Mês da Venda
+    if COL_MES_VENDA and COL_MES_VENDA in row and pd.notna(row[COL_MES_VENDA]):
+        raw = str(row[COL_MES_VENDA]).strip()
+        if raw:
+            # Se tiver ano explícito (4 dígitos), respeita exatamente
+            if re.search(r"\b(19|20)\d{2}\b", raw):
+                mk = parse_mes(raw, fallback_year=None)
+                if mk:
+                    return mk
+            # Senão, é só mês (nome/01), então usa o ano da Data da Venda (ou ano atual)
+            fy = date_key[0] if date_key else dt.date.today().year
+            mk2 = parse_mes(raw, fallback_year=fy)
+            if mk2:
+                return mk2
+
+    # 3) fallback pela Data da Venda
+    if date_key:
+        return date_key
+
     return None
 
 def get_mes_compra_key(row):
