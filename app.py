@@ -1,12 +1,18 @@
-# dashboard_sheets_versao2_fixed_v27_corrige_valores_remove_ticket_grafico.py
+# dashboard_sheets_versao2_fixed_v27_corrige_valores_remove_ticket_grafico_cachefix.py
 # Pedigree — Visão Geral (TV)
 # - Pedigree (vendas/valores): gid 583435424 (Comissão Jullia)
 # - Filhotes vendidos (KPI topo): aba Clear gid 1396326144
+#
+# ✅ FIX ATUALIZAÇÃO (CACHE):
+# - cache com TTL (atualiza sozinho a cada 60s)
+# - botão "Atualizar dados" para forçar recarregar na hora
+# - cache-buster na URL do Google Sheets para evitar cache do CSV
 
 import streamlit as st
 import pandas as pd
 import datetime as dt
 import re
+import time
 
 st.set_page_config(page_title="Pedigree — Visão Geral (TV)", page_icon="🪪", layout="wide")
 
@@ -63,9 +69,13 @@ header {visibility: hidden;}
 # -------------------------------
 # Helpers
 # -------------------------------
-@st.cache_data(show_spinner=False)
+CACHE_TTL_SECONDS = 60  # ajuste aqui (60 = 1 minuto)
+
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS)
 def load_gid(gid: int) -> pd.DataFrame:
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={gid}"
+    # cache-buster: muda a cada minuto, reduz chance de cache do CSV no caminho
+    bust = int(time.time() // CACHE_TTL_SECONDS)
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={gid}&_={bust}"
     df = pd.read_csv(url)
     df.columns = [c.strip() for c in df.columns]
     return df
@@ -171,6 +181,17 @@ def detect_col(df, predicates):
     return None
 
 # -------------------------------
+# Botão para forçar atualização (limpa cache e recarrega)
+# -------------------------------
+top_left, top_right = st.columns([1, 3])
+with top_left:
+    if st.button("🔄 Atualizar dados agora"):
+        st.cache_data.clear()
+        st.rerun()
+with top_right:
+    st.caption(f"Atualiza automaticamente a cada ~{CACHE_TTL_SECONDS}s. Use o botão para atualizar na hora.")
+
+# -------------------------------
 # Load data
 # -------------------------------
 df = load_gid(GID_COMISSAO_JULLIA)
@@ -210,12 +231,12 @@ def get_mes_venda_key(row):
     3) Se Mês da Venda for só nome do mês (ex: Janeiro), usa o mês + ano da Data da Venda (ou ano atual)
     """
     # 1) Data da Venda (ano/mês mais confiável)
-    dt = None
+    dtv = None
     date_key = None
     if COL_DATA and COL_DATA in row and pd.notna(row[COL_DATA]):
-        dt = parse_date_any(row[COL_DATA])
-        if dt:
-            date_key = (dt.year, dt.month)
+        dtv = parse_date_any(row[COL_DATA])
+        if dtv:
+            date_key = (dtv.year, dtv.month)
 
     # 2) Mês da Venda
     if COL_MES_VENDA and COL_MES_VENDA in row and pd.notna(row[COL_MES_VENDA]):
@@ -289,9 +310,7 @@ def _collect_mes_venda_options(dframe):
             if mk:
                 opts.add(mk)
 
-
     # Se a planilha não traz o ano no "Mês da Venda" (ex: só "Janeiro"),
-    # o parsing pode ficar limitado. Para manter o filtro completo (Jan..Dez),
     # expandimos os meses para cada ano detectado.
     if opts:
         years = sorted({y for (y, m) in opts})
@@ -302,8 +321,6 @@ def _collect_mes_venda_options(dframe):
         opts = expanded
 
     return sorted(list(opts), key=lambda x: (x[0], x[1]))
-
-
 
 all_mes_venda = _collect_mes_venda_options(df)
 
@@ -449,7 +466,6 @@ st.markdown("<div class='tv-subtitle' style='margin-top:10px;'>*Obs.: se “Mês
 
 # -------------------------------
 # Gráfico – Quantidade de produtos (mês selecionado)
-# (horizontal, estilo BI / TV — sem libs extras)
 # -------------------------------
 st.markdown("### Quantidade de produtos (mês selecionado)")
 
@@ -524,7 +540,6 @@ with k5:
     kpi_card("Certidão", money_br(v_certidao), "total no mês", accent="#16a34a", compact=True)
 with k6:
     kpi_card("Jullia", money_br(v_jullia), "total no mês", accent="#7c3aed", compact=True)
-
 
 # -------------------------------
 # Status Pedigree (aba Clear) — abaixo de tudo
@@ -607,3 +622,4 @@ else:
 
             with rows[r][c]:
                 kpi_card(status, f"{val}", "registros no mês", accent=accent, compact=True)
+
