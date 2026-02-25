@@ -3,14 +3,12 @@
 # - Pedigree (vendas/valores): gid 583435424 (Comissão Jullia)
 # - Filhotes vendidos (KPI topo): aba Clear gid 1396326144
 #
-# ✅ FIX "NÃO ATUALIZA":
-# IMPORTANTE: o Streamlit SÓ busca dados de novo quando o app "re-executa" (rerun).
-# Só colocar ttl no cache NÃO garante rerun automático na TV.
-#
-# Este arquivo adiciona:
-# 1) Auto-refresh da página (rerun) a cada 60s via JS (modo TV)
-# 2) Cache com TTL (60s) + cache-buster na URL do CSV
+# ✅ FIX "NÃO ATUALIZA" (EasyPanel):
+# 1) Auto-refresh via JS adicionando querystring (_tv=timestamp) => evita cache de proxy/CDN
+# 2) Cache com TTL (60s) + cache-buster no CSV em milissegundos
 # 3) Botão "Atualizar agora" (limpa cache e re-executa)
+#
+# Observação: se o app NÃO reexecuta, o Streamlit não busca dados novos.
 
 import streamlit as st
 import pandas as pd
@@ -23,7 +21,7 @@ st.set_page_config(page_title="Pedigree — Visão Geral (TV)", page_icon="🪪"
 # -------------------------------
 # CONFIG
 # -------------------------------
-AUTO_REFRESH_SECONDS = 60  # TV: recarrega a página automaticamente
+AUTO_REFRESH_SECONDS = 60  # TV: recarrega automaticamente
 CACHE_TTL_SECONDS = 60     # Dados: cache por 60s (alinha com o auto-refresh)
 
 # -------------------------------
@@ -34,16 +32,18 @@ GID_COMISSAO_JULLIA = 583435424
 GID_CLEAR = 1396326144
 
 # -------------------------------
-# Auto-refresh (TV)
+# Auto-refresh (TV) — ANTI-CACHE (EasyPanel/Proxy)
 # -------------------------------
-# Isso força o navegador a recarregar a página periodicamente.
-# (Sem isso, o Streamlit pode ficar "parado" e nunca reexecutar sozinho.)
+# Ao invés de só reload(), adiciona um parâmetro na URL (_tv=timestamp) para evitar cache intermediário.
 st.markdown(
     f"""
 <script>
-  setTimeout(function(){{
-    window.location.reload();
-  }}, {AUTO_REFRESH_SECONDS * 1000});
+  const refreshMs = {AUTO_REFRESH_SECONDS * 1000};
+  setTimeout(() => {{
+    const url = new URL(window.location.href);
+    url.searchParams.set("_tv", Date.now());
+    window.location.replace(url.toString());
+  }}, refreshMs);
 </script>
 """,
     unsafe_allow_html=True,
@@ -88,7 +88,7 @@ header {visibility: hidden;}
 .kpi-card.compact .kpi-sub { font-size: 12px; margin-left: 14px; margin-top: 2px; }
 </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 # -------------------------------
@@ -96,12 +96,13 @@ header {visibility: hidden;}
 # -------------------------------
 @st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS)
 def load_gid(gid: int) -> pd.DataFrame:
-    # cache-buster muda a cada execução (por segundo) para evitar cache do CSV em proxy/CDN
-    bust = int(time.time())
+    # cache-buster em MILISSEGUNDOS para evitar cache agressivo
+    bust = int(time.time() * 1000)
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={gid}&_={bust}"
     df = pd.read_csv(url)
     df.columns = [c.strip() for c in df.columns]
     return df
+
 
 def brl_to_float(v):
     if pd.isna(v):
@@ -115,12 +116,14 @@ def brl_to_float(v):
     except Exception:
         return 0.0
 
+
 def money_br(v):
     try:
         v = float(v)
     except Exception:
         v = 0.0
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 
 def parse_date_any(v):
     if pd.isna(v):
@@ -133,17 +136,29 @@ def parse_date_any(v):
         return None
     return d.date()
 
+
 def month_name_to_int(s: str):
     s = str(s).strip().lower()
     meses = {
-        "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4,
-        "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9,
-        "outubro": 10, "novembro": 11, "dezembro": 12
+        "janeiro": 1,
+        "fevereiro": 2,
+        "março": 3,
+        "marco": 3,
+        "abril": 4,
+        "maio": 5,
+        "junho": 6,
+        "julho": 7,
+        "agosto": 8,
+        "setembro": 9,
+        "outubro": 10,
+        "novembro": 11,
+        "dezembro": 12,
     }
     for k, v in meses.items():
         if k in s:
             return v
     return None
+
 
 def parse_mes(v, fallback_year=None):
     """Return (year, month) or None."""
@@ -173,28 +188,32 @@ def parse_mes(v, fallback_year=None):
 
     return None
 
+
 def mes_label(ym):
     y, m = ym
     return f"{m:02d}/{y}"
+
 
 def kpi_card(title, value, subtitle, accent="#4f46e5", compact: bool = False):
     klass = "kpi-card compact" if compact else "kpi-card"
     st.markdown(
         f"""
-<div class=\"{klass}\">
+<div class="{klass}">
   <div class="kpi-accent" style="background:{accent};"></div>
   <div class="kpi-title">{title}</div>
   <div class="kpi-value">{value}</div>
   <div class="kpi-sub">{subtitle}</div>
 </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
+
 
 def soma_coluna(df_part: pd.DataFrame, col: str) -> float:
     if col and col in df_part.columns:
         return df_part[col].apply(brl_to_float).sum()
     return 0.0
+
 
 def detect_col(df, predicates):
     for c in df.columns:
@@ -202,6 +221,7 @@ def detect_col(df, predicates):
         if any(p(cl) for p in predicates):
             return c
     return None
+
 
 # -------------------------------
 # Barra topo: atualização
@@ -211,8 +231,12 @@ with top_left:
     if st.button("🔄 Atualizar agora"):
         st.cache_data.clear()
         st.rerun()
+
 with top_right:
-    st.caption(f"TV: recarrega a página a cada ~{AUTO_REFRESH_SECONDS}s • Cache TTL: {CACHE_TTL_SECONDS}s • Último reload: {dt.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    st.caption(
+        f"TV: recarrega a página a cada ~{AUTO_REFRESH_SECONDS}s • Cache TTL: {CACHE_TTL_SECONDS}s • "
+        f"Último rerun: {dt.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+    )
 
 # -------------------------------
 # Load data
@@ -222,21 +246,50 @@ df_clear = load_gid(GID_CLEAR)
 
 # Columns (Comissão Jullia)
 COL_UNIDADE = detect_col(df, [lambda s: "unidade" in s, lambda s: "loja" in s])
-COL_MES_VENDA = detect_col(df, [lambda s: "mês da venda" in s, lambda s: "mes da venda" in s,
-                               lambda s: "mês venda" in s, lambda s: "mes venda" in s,
-                               lambda s: "mês de venda" in s, lambda s: "mes de venda" in s])
-COL_MES_COMPRA = detect_col(df, [lambda s: "mês da compra do cliente" in s, lambda s: "mes da compra do cliente" in s,
-                                lambda s: "mês de compra" in s, lambda s: "mes de compra" in s,
-                                lambda s: "compra do cliente" in s])
-COL_DATA = detect_col(df, [lambda s: s in ["vendas", "data", "data venda", "data da venda"],
-                           lambda s: ("data" in s and "venda" in s)])
+COL_MES_VENDA = detect_col(
+    df,
+    [
+        lambda s: "mês da venda" in s,
+        lambda s: "mes da venda" in s,
+        lambda s: "mês venda" in s,
+        lambda s: "mes venda" in s,
+        lambda s: "mês de venda" in s,
+        lambda s: "mes de venda" in s,
+    ],
+)
+COL_MES_COMPRA = detect_col(
+    df,
+    [
+        lambda s: "mês da compra do cliente" in s,
+        lambda s: "mes da compra do cliente" in s,
+        lambda s: "mês de compra" in s,
+        lambda s: "mes de compra" in s,
+        lambda s: "compra do cliente" in s,
+    ],
+)
+COL_DATA = detect_col(
+    df,
+    [
+        lambda s: s in ["vendas", "data", "data venda", "data da venda"],
+        lambda s: ("data" in s and "venda" in s),
+    ],
+)
 
-# Valor: SEMPRE preferir a coluna "Valor" (para não somar componentes e duplicar)
+# Valor: SEMPRE preferir a coluna "Valor"
 COL_VALOR = detect_col(df, [lambda s: s == "valor", lambda s: s.startswith("valor ")])
 
-# Produto (coluna D na sua planilha: "Produtos")
-COL_PRODUTO = detect_col(df, [lambda s: s == "produtos", lambda s: s == "produto", lambda s: "produto" in s,
-                              lambda s: s == "pedigree", lambda s: s.startswith("pedigree")])
+# Produto
+COL_PRODUTO = detect_col(
+    df,
+    [
+        lambda s: s == "produtos",
+        lambda s: s == "produto",
+        lambda s: "produto" in s,
+        lambda s: s == "pedigree",
+        lambda s: s.startswith("pedigree"),
+    ],
+)
+
 
 def row_fallback_year(row):
     if COL_DATA and COL_DATA in row:
@@ -244,6 +297,7 @@ def row_fallback_year(row):
         if d:
             return d.year
     return dt.date.today().year
+
 
 def get_mes_venda_key(row):
     dtv = None
@@ -269,6 +323,7 @@ def get_mes_venda_key(row):
         return date_key
     return None
 
+
 def get_mes_compra_key(row):
     mv = get_mes_venda_key(row)
     fy = mv[0] if mv else row_fallback_year(row)
@@ -278,10 +333,12 @@ def get_mes_compra_key(row):
             return mk
     return None
 
+
 df["_mes_venda_key"] = df.apply(get_mes_venda_key, axis=1)
 df["_mes_compra_key"] = df.apply(get_mes_compra_key, axis=1)
 
 df_valid = df[df["_mes_venda_key"].notna()].copy()
+
 
 def _collect_mes_venda_options(dframe):
     opts = set()
@@ -319,6 +376,7 @@ def _collect_mes_venda_options(dframe):
 
     return sorted(list(opts), key=lambda x: (x[0], x[1]))
 
+
 all_mes_venda = _collect_mes_venda_options(df)
 default_month = all_mes_venda[-1] if all_mes_venda else (dt.date.today().year, dt.date.today().month)
 
@@ -330,7 +388,7 @@ st.markdown(
     .filter-wrap { background: rgba(255,255,255,0.0); padding: 0.2rem 0 0.6rem 0; }
     .stSelectbox > div { min-width: 220px; }
     </style>""",
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 f1, f2, f3 = st.columns([1.0, 1.2, 1.2])
@@ -342,17 +400,18 @@ with f2:
     selected_mes_venda = st.selectbox(
         "Mês da Venda",
         options=all_mes_venda,
-        index=all_mes_venda.index(st.session_state.get("mes_venda_sel", default_month)) if st.session_state.get("mes_venda_sel", default_month) in all_mes_venda else 0,
+        index=all_mes_venda.index(st.session_state.get("mes_venda_sel", default_month))
+        if st.session_state.get("mes_venda_sel", default_month) in all_mes_venda
+        else 0,
         format_func=mes_label,
         key="mes_venda_sel",
     )
 
 with f3:
     if COL_UNIDADE:
-        unidades = ["Todas"] + sorted([
-            u for u in df_valid[COL_UNIDADE].dropna().astype(str).unique()
-            if str(u).strip() != ""
-        ])
+        unidades = ["Todas"] + sorted(
+            [u for u in df_valid[COL_UNIDADE].dropna().astype(str).unique() if str(u).strip() != ""]
+        )
         unidade = st.selectbox("Unidade", options=unidades, index=0)
     else:
         unidade = "Todas"
@@ -374,8 +433,12 @@ def _detect_mes_col_clear(dfc):
             return c
     return None
 
+
 CLEAR_COL_MES = _detect_mes_col_clear(df_clear)
-CLEAR_COL_ID = detect_col(df_clear, [lambda s: s == "nome", lambda s: "cpf" in s, lambda s: "cliente" in s]) or (df_clear.columns[0] if len(df_clear.columns) else None)
+CLEAR_COL_ID = (
+    detect_col(df_clear, [lambda s: s == "nome", lambda s: "cpf" in s, lambda s: "cliente" in s])
+    or (df_clear.columns[0] if len(df_clear.columns) else None)
+)
 
 filhotes_mes = 0
 if CLEAR_COL_MES:
@@ -399,6 +462,7 @@ q_total_mes_venda = len(df_mes_venda)
 q_mesmo = len(df_mesmo_mes)
 q_outros = len(df_outros_meses)
 
+
 def soma_valor(df_part):
     if COL_VALOR and COL_VALOR in df_part.columns:
         return df_part[COL_VALOR].apply(brl_to_float).sum()
@@ -409,6 +473,7 @@ def soma_valor(df_part):
             total += df_part[c].apply(brl_to_float).sum()
     return total
 
+
 v_total_mes_venda = soma_valor(df_mes_venda)
 v_mesmo = soma_valor(df_mesmo_mes)
 v_outros = soma_valor(df_outros_meses)
@@ -418,8 +483,9 @@ v_outros = soma_valor(df_outros_meses)
 # -------------------------------
 st.markdown('<div class="tv-title">Pedigree — Visão Geral</div>', unsafe_allow_html=True)
 st.markdown(
-    f'<div class="tv-subtitle">Filtro por <b>Mês da Venda</b> • Comissão Jullia (gid {GID_COMISSAO_JULLIA}) • Mês selecionado: <b>{mes_label(selected_mes_venda)}</b> • Unidade: <b>{unidade}</b></div>',
-    unsafe_allow_html=True
+    f'<div class="tv-subtitle">Filtro por <b>Mês da Venda</b> • Comissão Jullia (gid {GID_COMISSAO_JULLIA}) • '
+    f'Mês selecionado: <b>{mes_label(selected_mes_venda)}</b> • Unidade: <b>{unidade}</b></div>',
+    unsafe_allow_html=True,
 )
 
 st.markdown(
@@ -429,7 +495,7 @@ st.markdown(
   <div class="value">{filhotes_mes}</div>
 </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 # -------------------------------
@@ -451,4 +517,9 @@ with c5:
 with c6:
     kpi_card("R$ outros meses", money_br(v_outros), "valor das compras de outros meses", accent="#b91c1c")
 
-st.markdown("<div class='tv-subtitle' style='margin-top:10px;'>*Obs.: se “Mês de Compra” estiver vazio, entra em “outros meses”.*</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='tv-subtitle' style='margin-top:10px;'>*Obs.: se “Mês de Compra” estiver vazio, entra em “outros meses”.*</div>",
+    unsafe_allow_html=True,
+)
+
+# (Se você quiser, eu já junto aqui também o resto do seu arquivo: gráfico + totais por componente + status)
