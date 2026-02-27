@@ -1,28 +1,29 @@
-# dashboard_sheets_versao2_fixed_v27_corrige_valores_remove_ticket_grafico_cachefix_autorefresh.py
+# app.py
 # Pedigree — Visão Geral (TV)
 # - Pedigree (vendas/valores): gid 583435424 (Comissão Jullia)
 # - Filhotes vendidos (KPI topo): aba Clear gid 1396326144
 #
-# ✅ FIX "NÃO ATUALIZA" (EasyPanel):
-# 1) Auto-refresh via JS adicionando querystring (_tv=timestamp) => evita cache de proxy/CDN
+# FIX "NÃO ATUALIZA" (EasyPanel):
+# 1) Auto-refresh via JS adicionando querystring (_tv=timestamp) => ajuda contra cache de proxy/CDN
 # 2) Cache com TTL (60s) + cache-buster no CSV em milissegundos
 # 3) Botão "Atualizar agora" (limpa cache e re-executa)
-#
-# Observação: se o app NÃO reexecuta, o Streamlit não busca dados novos.
+# 4) APP VERSION na tela (pra bater o olho e saber se o EasyPanel realmente pegou o código novo)
 
-import streamlit as st
-import pandas as pd
-import datetime as dt
-import re
+import os
 import time
+import re
+import datetime as dt
 
-st.set_page_config(page_title="Pedigree — Visão Geral (TV)", page_icon="🪪", layout="wide")
+import pandas as pd
+import streamlit as st
 
 # -------------------------------
 # CONFIG
 # -------------------------------
-AUTO_REFRESH_SECONDS = 60  # TV: recarrega automaticamente
-CACHE_TTL_SECONDS = 60     # Dados: cache por 60s (alinha com o auto-refresh)
+AUTO_REFRESH_SECONDS = 60
+CACHE_TTL_SECONDS = 60
+
+st.set_page_config(page_title="Pedigree — Visão Geral (TV)", page_icon="🪪", layout="wide")
 
 # -------------------------------
 # IDs
@@ -32,9 +33,16 @@ GID_COMISSAO_JULLIA = 583435424
 GID_CLEAR = 1396326144
 
 # -------------------------------
+# APP VERSION (pra validar deploy)
+# - Se você quiser, pode setar APP_VERSION nas variáveis de ambiente do EasyPanel.
+# - Se não setar, ele usa o timestamp de inicialização do processo.
+# -------------------------------
+APP_BOOT = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+APP_VERSION = os.getenv("APP_VERSION", f"boot@{APP_BOOT}")
+
+# -------------------------------
 # Auto-refresh (TV) — ANTI-CACHE (EasyPanel/Proxy)
 # -------------------------------
-# Ao invés de só reload(), adiciona um parâmetro na URL (_tv=timestamp) para evitar cache intermediário.
 st.markdown(
     f"""
 <script>
@@ -96,13 +104,12 @@ header {visibility: hidden;}
 # -------------------------------
 @st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS)
 def load_gid(gid: int) -> pd.DataFrame:
-    # cache-buster em MILISSEGUNDOS para evitar cache agressivo
+    # cache-buster em MILISSEGUNDOS (evita cache agressivo)
     bust = int(time.time() * 1000)
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={gid}&_={bust}"
     df = pd.read_csv(url)
     df.columns = [c.strip() for c in df.columns]
     return df
-
 
 def brl_to_float(v):
     if pd.isna(v):
@@ -116,14 +123,12 @@ def brl_to_float(v):
     except Exception:
         return 0.0
 
-
 def money_br(v):
     try:
         v = float(v)
     except Exception:
         v = 0.0
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
 
 def parse_date_any(v):
     if pd.isna(v):
@@ -136,29 +141,17 @@ def parse_date_any(v):
         return None
     return d.date()
 
-
 def month_name_to_int(s: str):
     s = str(s).strip().lower()
     meses = {
-        "janeiro": 1,
-        "fevereiro": 2,
-        "março": 3,
-        "marco": 3,
-        "abril": 4,
-        "maio": 5,
-        "junho": 6,
-        "julho": 7,
-        "agosto": 8,
-        "setembro": 9,
-        "outubro": 10,
-        "novembro": 11,
-        "dezembro": 12,
+        "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4,
+        "maio": 5, "junho": 6, "julho": 7, "agosto": 8, "setembro": 9,
+        "outubro": 10, "novembro": 11, "dezembro": 12
     }
     for k, v in meses.items():
         if k in s:
             return v
     return None
-
 
 def parse_mes(v, fallback_year=None):
     """Return (year, month) or None."""
@@ -170,15 +163,15 @@ def parse_mes(v, fallback_year=None):
 
     mname = month_name_to_int(s)
     if mname:
-        y = re.search(r"(20\d{2})", s)
+        y = re.search(r"(20\\d{2})", s)
         year = int(y.group(1)) if y else (fallback_year if fallback_year else dt.date.today().year)
         return (year, mname)
 
-    m = re.search(r"(\d{1,2})/(20\d{2})", s)
+    m = re.search(r"(\\d{1,2})/(20\\d{2})", s)
     if m:
         return (int(m.group(2)), int(m.group(1)))
 
-    m2 = re.search(r"(20\d{2})[-/](\d{1,2})", s)
+    m2 = re.search(r"(20\\d{2})[-/](\\d{1,2})", s)
     if m2:
         return (int(m2.group(1)), int(m2.group(2)))
 
@@ -188,11 +181,9 @@ def parse_mes(v, fallback_year=None):
 
     return None
 
-
 def mes_label(ym):
     y, m = ym
     return f"{m:02d}/{y}"
-
 
 def kpi_card(title, value, subtitle, accent="#4f46e5", compact: bool = False):
     klass = "kpi-card compact" if compact else "kpi-card"
@@ -205,15 +196,13 @@ def kpi_card(title, value, subtitle, accent="#4f46e5", compact: bool = False):
   <div class="kpi-sub">{subtitle}</div>
 </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
-
 
 def soma_coluna(df_part: pd.DataFrame, col: str) -> float:
     if col and col in df_part.columns:
         return df_part[col].apply(brl_to_float).sum()
     return 0.0
-
 
 def detect_col(df, predicates):
     for c in df.columns:
@@ -222,15 +211,17 @@ def detect_col(df, predicates):
             return c
     return None
 
-
 # -------------------------------
-# Barra topo: atualização
+# Barra topo: atualização + versão
 # -------------------------------
-top_left, top_right = st.columns([1, 3])
+top_left, top_mid, top_right = st.columns([1, 2, 3])
 with top_left:
     if st.button("🔄 Atualizar agora"):
         st.cache_data.clear()
         st.rerun()
+
+with top_mid:
+    st.caption(f"APP VERSION: {APP_VERSION}")
 
 with top_right:
     st.caption(
@@ -246,50 +237,32 @@ df_clear = load_gid(GID_CLEAR)
 
 # Columns (Comissão Jullia)
 COL_UNIDADE = detect_col(df, [lambda s: "unidade" in s, lambda s: "loja" in s])
-COL_MES_VENDA = detect_col(
-    df,
-    [
-        lambda s: "mês da venda" in s,
-        lambda s: "mes da venda" in s,
-        lambda s: "mês venda" in s,
-        lambda s: "mes venda" in s,
-        lambda s: "mês de venda" in s,
-        lambda s: "mes de venda" in s,
-    ],
-)
-COL_MES_COMPRA = detect_col(
-    df,
-    [
-        lambda s: "mês da compra do cliente" in s,
-        lambda s: "mes da compra do cliente" in s,
-        lambda s: "mês de compra" in s,
-        lambda s: "mes de compra" in s,
-        lambda s: "compra do cliente" in s,
-    ],
-)
-COL_DATA = detect_col(
-    df,
-    [
-        lambda s: s in ["vendas", "data", "data venda", "data da venda"],
-        lambda s: ("data" in s and "venda" in s),
-    ],
-)
+COL_MES_VENDA = detect_col(df, [
+    lambda s: "mês da venda" in s, lambda s: "mes da venda" in s,
+    lambda s: "mês venda" in s, lambda s: "mes venda" in s,
+    lambda s: "mês de venda" in s, lambda s: "mes de venda" in s
+])
+COL_MES_COMPRA = detect_col(df, [
+    lambda s: "mês da compra do cliente" in s, lambda s: "mes da compra do cliente" in s,
+    lambda s: "mês de compra" in s, lambda s: "mes de compra" in s,
+    lambda s: "compra do cliente" in s
+])
+COL_DATA = detect_col(df, [
+    lambda s: s in ["vendas", "data", "data venda", "data da venda"],
+    lambda s: ("data" in s and "venda" in s)
+])
 
 # Valor: SEMPRE preferir a coluna "Valor"
 COL_VALOR = detect_col(df, [lambda s: s == "valor", lambda s: s.startswith("valor ")])
 
 # Produto
-COL_PRODUTO = detect_col(
-    df,
-    [
-        lambda s: s == "produtos",
-        lambda s: s == "produto",
-        lambda s: "produto" in s,
-        lambda s: s == "pedigree",
-        lambda s: s.startswith("pedigree"),
-    ],
-)
-
+COL_PRODUTO = detect_col(df, [
+    lambda s: s == "produtos",
+    lambda s: s == "produto",
+    lambda s: "produto" in s,
+    lambda s: s == "pedigree",
+    lambda s: s.startswith("pedigree")
+])
 
 def row_fallback_year(row):
     if COL_DATA and COL_DATA in row:
@@ -297,7 +270,6 @@ def row_fallback_year(row):
         if d:
             return d.year
     return dt.date.today().year
-
 
 def get_mes_venda_key(row):
     dtv = None
@@ -310,7 +282,7 @@ def get_mes_venda_key(row):
     if COL_MES_VENDA and COL_MES_VENDA in row and pd.notna(row[COL_MES_VENDA]):
         raw = str(row[COL_MES_VENDA]).strip()
         if raw:
-            if re.search(r"\b(19|20)\d{2}\b", raw):
+            if re.search(r"\\b(19|20)\\d{2}\\b", raw):
                 mk = parse_mes(raw, fallback_year=None)
                 if mk:
                     return mk
@@ -323,7 +295,6 @@ def get_mes_venda_key(row):
         return date_key
     return None
 
-
 def get_mes_compra_key(row):
     mv = get_mes_venda_key(row)
     fy = mv[0] if mv else row_fallback_year(row)
@@ -333,12 +304,10 @@ def get_mes_compra_key(row):
             return mk
     return None
 
-
 df["_mes_venda_key"] = df.apply(get_mes_venda_key, axis=1)
 df["_mes_compra_key"] = df.apply(get_mes_compra_key, axis=1)
 
 df_valid = df[df["_mes_venda_key"].notna()].copy()
-
 
 def _collect_mes_venda_options(dframe):
     opts = set()
@@ -376,7 +345,6 @@ def _collect_mes_venda_options(dframe):
 
     return sorted(list(opts), key=lambda x: (x[0], x[1]))
 
-
 all_mes_venda = _collect_mes_venda_options(df)
 default_month = all_mes_venda[-1] if all_mes_venda else (dt.date.today().year, dt.date.today().month)
 
@@ -388,7 +356,7 @@ st.markdown(
     .filter-wrap { background: rgba(255,255,255,0.0); padding: 0.2rem 0 0.6rem 0; }
     .stSelectbox > div { min-width: 220px; }
     </style>""",
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
 f1, f2, f3 = st.columns([1.0, 1.2, 1.2])
@@ -401,17 +369,17 @@ with f2:
         "Mês da Venda",
         options=all_mes_venda,
         index=all_mes_venda.index(st.session_state.get("mes_venda_sel", default_month))
-        if st.session_state.get("mes_venda_sel", default_month) in all_mes_venda
-        else 0,
+        if st.session_state.get("mes_venda_sel", default_month) in all_mes_venda else 0,
         format_func=mes_label,
         key="mes_venda_sel",
     )
 
 with f3:
     if COL_UNIDADE:
-        unidades = ["Todas"] + sorted(
-            [u for u in df_valid[COL_UNIDADE].dropna().astype(str).unique() if str(u).strip() != ""]
-        )
+        unidades = ["Todas"] + sorted([
+            u for u in df_valid[COL_UNIDADE].dropna().astype(str).unique()
+            if str(u).strip() != ""
+        ])
         unidade = st.selectbox("Unidade", options=unidades, index=0)
     else:
         unidade = "Todas"
@@ -433,12 +401,12 @@ def _detect_mes_col_clear(dfc):
             return c
     return None
 
-
 CLEAR_COL_MES = _detect_mes_col_clear(df_clear)
-CLEAR_COL_ID = (
-    detect_col(df_clear, [lambda s: s == "nome", lambda s: "cpf" in s, lambda s: "cliente" in s])
-    or (df_clear.columns[0] if len(df_clear.columns) else None)
-)
+CLEAR_COL_ID = detect_col(df_clear, [
+    lambda s: s == "nome",
+    lambda s: "cpf" in s,
+    lambda s: "cliente" in s
+]) or (df_clear.columns[0] if len(df_clear.columns) else None)
 
 filhotes_mes = 0
 if CLEAR_COL_MES:
@@ -462,7 +430,6 @@ q_total_mes_venda = len(df_mes_venda)
 q_mesmo = len(df_mesmo_mes)
 q_outros = len(df_outros_meses)
 
-
 def soma_valor(df_part):
     if COL_VALOR and COL_VALOR in df_part.columns:
         return df_part[COL_VALOR].apply(brl_to_float).sum()
@@ -472,7 +439,6 @@ def soma_valor(df_part):
         if cl in ["silmario", "correios", "airtag", "certidão", "certidao", "jullia", "julia", "clear"]:
             total += df_part[c].apply(brl_to_float).sum()
     return total
-
 
 v_total_mes_venda = soma_valor(df_mes_venda)
 v_mesmo = soma_valor(df_mesmo_mes)
@@ -485,9 +451,10 @@ st.markdown('<div class="tv-title">Pedigree — Visão Geral</div>', unsafe_allo
 st.markdown(
     f'<div class="tv-subtitle">Filtro por <b>Mês da Venda</b> • Comissão Jullia (gid {GID_COMISSAO_JULLIA}) • '
     f'Mês selecionado: <b>{mes_label(selected_mes_venda)}</b> • Unidade: <b>{unidade}</b></div>',
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
+# Big KPI (filhotes)
 st.markdown(
     f"""
 <div class="big-kpi">
@@ -495,11 +462,11 @@ st.markdown(
   <div class="value">{filhotes_mes}</div>
 </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
 # -------------------------------
-# Cards
+# Cards (linha 1)
 # -------------------------------
 c1, c2, c3 = st.columns(3)
 with c1:
@@ -509,6 +476,7 @@ with c2:
 with c3:
     kpi_card("Compras de outros meses", f"{q_outros}", "Mês Compra ≠ Mês Venda", accent="#ef4444")
 
+# Cards (linha 2)
 c4, c5, c6 = st.columns(3)
 with c4:
     kpi_card("Faturamento do mês (registrado)", money_br(v_total_mes_venda), "somatório do mês selecionado", accent="#6366f1")
@@ -517,9 +485,154 @@ with c5:
 with c6:
     kpi_card("R$ outros meses", money_br(v_outros), "valor das compras de outros meses", accent="#b91c1c")
 
-st.markdown(
-    "<div class='tv-subtitle' style='margin-top:10px;'>*Obs.: se “Mês de Compra” estiver vazio, entra em “outros meses”.*</div>",
-    unsafe_allow_html=True,
-)
+st.markdown("<div class='tv-subtitle' style='margin-top:10px;'>*Obs.: se “Mês de Compra” estiver vazio, entra em “outros meses”.*</div>", unsafe_allow_html=True)
 
-# (Se você quiser, eu já junto aqui também o resto do seu arquivo: gráfico + totais por componente + status)
+# -------------------------------
+# Gráfico – Quantidade de produtos (mês selecionado)
+# -------------------------------
+st.markdown("### Quantidade de produtos (mês selecionado)")
+
+if COL_PRODUTO and COL_PRODUTO in df_mes_venda.columns:
+    prod_counts = (
+        df_mes_venda[COL_PRODUTO]
+        .astype(str)
+        .str.strip()
+        .replace("", "Não informado")
+        .value_counts()
+        .sort_values(ascending=True)
+    )
+
+    if not prod_counts.empty:
+        import plotly.express as px
+
+        chart_df = prod_counts.reset_index()
+        chart_df.columns = ["Produto", "Quantidade"]
+
+        fig = px.bar(
+            chart_df,
+            x="Quantidade",
+            y="Produto",
+            orientation="h",
+            text="Quantidade",
+            height=max(320, 45 * len(chart_df)),
+        )
+        fig.update_traces(textposition="outside")
+        fig.update_layout(
+            xaxis_title="Quantidade",
+            yaxis_title="",
+            margin=dict(l=10, r=10, t=10, b=10),
+            showlegend=False,
+        )
+
+        # sem use_container_width (evita warning)
+        st.plotly_chart(fig, width="stretch")
+    else:
+        st.info("Nenhum produto encontrado para o mês selecionado.")
+else:
+    st.info("Coluna de produtos não encontrada (esperado: coluna D / 'Produtos').")
+
+# -------------------------------
+# Totais por componente (mês selecionado)
+# -------------------------------
+st.markdown("### Totais por componente (mês selecionado)")
+
+COL_SILMARIO = detect_col(df, [lambda s: s == "silmario"])
+COL_CLEAR_CMP = detect_col(df, [lambda s: s == "clear"])
+COL_CORREIOS = detect_col(df, [lambda s: s == "correios"])
+COL_AIRTAG = detect_col(df, [lambda s: s in ["airtag", "air tag"]])
+COL_CERTIDAO = detect_col(df, [lambda s: s in ["certidão", "certidao"]])
+COL_JULLIA = detect_col(df, [lambda s: s in ["jullia", "julia"]])
+
+v_silmario = soma_coluna(df_mes_venda, COL_SILMARIO)
+v_clear_cmp = soma_coluna(df_mes_venda, COL_CLEAR_CMP)
+v_correios = soma_coluna(df_mes_venda, COL_CORREIOS)
+v_airtag = soma_coluna(df_mes_venda, COL_AIRTAG)
+v_certidao = soma_coluna(df_mes_venda, COL_CERTIDAO)
+v_jullia = soma_coluna(df_mes_venda, COL_JULLIA)
+
+k1, k2, k3, k4, k5, k6 = st.columns(6)
+with k1:
+    kpi_card("Silmario", money_br(v_silmario), "total no mês", accent="#0ea5e9", compact=True)
+with k2:
+    kpi_card("Clear", money_br(v_clear_cmp), "total no mês", accent="#f97316", compact=True)
+with k3:
+    kpi_card("Correios", money_br(v_correios), "total no mês", accent="#2563eb", compact=True)
+with k4:
+    kpi_card("AirTag", money_br(v_airtag), "total no mês", accent="#f59e0b", compact=True)
+with k5:
+    kpi_card("Certidão", money_br(v_certidao), "total no mês", accent="#16a34a", compact=True)
+with k6:
+    kpi_card("Jullia", money_br(v_jullia), "total no mês", accent="#7c3aed", compact=True)
+
+# -------------------------------
+# Status Pedigree (aba Clear)
+# -------------------------------
+st.markdown("### Status Pedigree (aba Clear • mês selecionado)")
+
+CLEAR_COL_STATUS = detect_col(df_clear, [
+    lambda s: s == "status pedigree",
+    lambda s: "status pedigree" in s,
+])
+
+STATUS_LIST = [
+    "Fazer Pedigree Venda",
+    "Fazer Pedigree s/ trans",
+    "Fazer RG/Certidão",
+    "Pendências / Problemas",
+    "Aprovação Cliente",
+    "Para Imprimir Pedigree",
+    "Imprimir Etiqueta",
+    "Imprimir RG + Certidão",
+    "Airtag",
+    "Envio Correio",
+    "Postado/Enviado Corr",
+    "Postado/ enviado loja",
+]
+
+def _norm_status(v: str) -> str:
+    s = str(v or "").strip().lower()
+    s = re.sub(r"\\s+", " ", s)
+    return s
+
+if not CLEAR_COL_MES:
+    st.warning("Na aba Clear não foi encontrada a coluna 'Mês' para filtrar por mês.")
+elif not CLEAR_COL_STATUS or CLEAR_COL_STATUS not in df_clear.columns:
+    st.warning("Na aba Clear não foi encontrada a coluna 'Status Pedigree'.")
+else:
+    clear_tmp = df_clear.copy()
+    clear_tmp["_mk"] = clear_tmp[CLEAR_COL_MES].apply(lambda v: parse_mes(v, fallback_year=selected_mes_venda[0]))
+    clear_tmp = clear_tmp[clear_tmp["_mk"].notna()]
+    clear_mes = clear_tmp[clear_tmp["_mk"] == selected_mes_venda].copy()
+
+    if clear_mes.empty:
+        st.info("Ainda não há registros na aba Clear para o mês selecionado.")
+    else:
+        col_series = clear_mes[CLEAR_COL_STATUS].fillna("").astype(str).str.strip()
+        col_series = col_series[col_series.ne("")]
+
+        counts_map = {}
+        if not col_series.empty:
+            vc = col_series.map(_norm_status).value_counts()
+            counts_map = vc.to_dict()
+
+        rows = [st.columns(4), st.columns(4), st.columns(4)]
+
+        for idx, status in enumerate(STATUS_LIST):
+            r = idx // 4
+            c = idx % 4
+            val = int(counts_map.get(_norm_status(status), 0))
+
+            stl = status.lower()
+            if "pend" in stl or "proble" in stl:
+                accent = "#ef4444"
+            elif "aprova" in stl:
+                accent = "#10b981"
+            elif "imprimir" in stl:
+                accent = "#2563eb"
+            elif "postado" in stl or "envio" in stl or "correio" in stl:
+                accent = "#f59e0b"
+            else:
+                accent = "#6366f1"
+
+            with rows[r][c]:
+                kpi_card(status, f"{val}", "registros no mês", accent=accent, compact=True)
