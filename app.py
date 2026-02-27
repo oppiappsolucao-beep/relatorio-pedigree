@@ -1,13 +1,3 @@
-import os, datetime as dt
-import streamlit as st
-
-st.sidebar.write("ENV CHECK")
-st.sidebar.write("NOW:", dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-# Mostra variáveis mais comuns (sem vazar segredo)
-for k in ["SHEET_ID", "SPREADSHEET_ID", "CSV_URL", "GOOGLE_SHEET_CSV_URL", "GID_PEDIGREE", "ENV", "TV_MODE"]:
-    v = os.getenv(k)
-    st.sidebar.write(f"{k}:", "✅ set" if v else "❌ missing")
 # app.py
 # Pedigree — Visão Geral (TV)
 # - Pedigree (vendas/valores): gid 583435424 (Comissão Jullia)
