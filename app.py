@@ -163,15 +163,15 @@ def parse_mes(v, fallback_year=None):
 
     mname = month_name_to_int(s)
     if mname:
-        y = re.search(r"(20\\d{2})", s)
+        y = re.search(r"(20\d{2})", s)
         year = int(y.group(1)) if y else (fallback_year if fallback_year else dt.date.today().year)
         return (year, mname)
 
-    m = re.search(r"(\\d{1,2})/(20\\d{2})", s)
+    m = re.search(r"(\d{1,2})/(20\d{2})", s)
     if m:
         return (int(m.group(2)), int(m.group(1)))
 
-    m2 = re.search(r"(20\\d{2})[-/](\\d{1,2})", s)
+    m2 = re.search(r"(20\d{2})[-/](\d{1,2})", s)
     if m2:
         return (int(m2.group(1)), int(m2.group(2)))
 
@@ -282,7 +282,7 @@ def get_mes_venda_key(row):
     if COL_MES_VENDA and COL_MES_VENDA in row and pd.notna(row[COL_MES_VENDA]):
         raw = str(row[COL_MES_VENDA]).strip()
         if raw:
-            if re.search(r"\\b(19|20)\\d{2}\\b", raw):
+            if re.search(r"\b(19|20)\d{2}\b", raw):
                 mk = parse_mes(raw, fallback_year=None)
                 if mk:
                     return mk
@@ -565,9 +565,9 @@ with k6:
     kpi_card("Jullia", money_br(v_jullia), "total no mês", accent="#7c3aed", compact=True)
 
 # -------------------------------
-# Status Pedigree (aba Clear)
+# Status Pedigree (aba Clear) — TOTAL ACUMULADO
 # -------------------------------
-st.markdown("### Status Pedigree (aba Clear • mês selecionado)")
+st.markdown("### Status Pedigree (aba Clear • total acumulado)")
 
 CLEAR_COL_STATUS = detect_col(df_clear, [
     lambda s: s == "status pedigree",
@@ -591,48 +591,40 @@ STATUS_LIST = [
 
 def _norm_status(v: str) -> str:
     s = str(v or "").strip().lower()
-    s = re.sub(r"\\s+", " ", s)
+    s = re.sub(r"\s+", " ", s)
     return s
 
-if not CLEAR_COL_MES:
-    st.warning("Na aba Clear não foi encontrada a coluna 'Mês' para filtrar por mês.")
-elif not CLEAR_COL_STATUS or CLEAR_COL_STATUS not in df_clear.columns:
+if not CLEAR_COL_STATUS or CLEAR_COL_STATUS not in df_clear.columns:
     st.warning("Na aba Clear não foi encontrada a coluna 'Status Pedigree'.")
 else:
-    clear_tmp = df_clear.copy()
-    clear_tmp["_mk"] = clear_tmp[CLEAR_COL_MES].apply(lambda v: parse_mes(v, fallback_year=selected_mes_venda[0]))
-    clear_tmp = clear_tmp[clear_tmp["_mk"].notna()]
-    clear_mes = clear_tmp[clear_tmp["_mk"] == selected_mes_venda].copy()
+    clear_total = df_clear.copy()
 
-    if clear_mes.empty:
-        st.info("Ainda não há registros na aba Clear para o mês selecionado.")
-    else:
-        col_series = clear_mes[CLEAR_COL_STATUS].fillna("").astype(str).str.strip()
-        col_series = col_series[col_series.ne("")]
+    col_series = clear_total[CLEAR_COL_STATUS].fillna("").astype(str).str.strip()
+    col_series = col_series[col_series.ne("")]
 
-        counts_map = {}
-        if not col_series.empty:
-            vc = col_series.map(_norm_status).value_counts()
-            counts_map = vc.to_dict()
+    counts_map = {}
+    if not col_series.empty:
+        vc = col_series.map(_norm_status).value_counts()
+        counts_map = vc.to_dict()
 
-        rows = [st.columns(4), st.columns(4), st.columns(4)]
+    rows = [st.columns(4), st.columns(4), st.columns(4)]
 
-        for idx, status in enumerate(STATUS_LIST):
-            r = idx // 4
-            c = idx % 4
-            val = int(counts_map.get(_norm_status(status), 0))
+    for idx, status in enumerate(STATUS_LIST):
+        r = idx // 4
+        c = idx % 4
+        val = int(counts_map.get(_norm_status(status), 0))
 
-            stl = status.lower()
-            if "pend" in stl or "proble" in stl:
-                accent = "#ef4444"
-            elif "aprova" in stl:
-                accent = "#10b981"
-            elif "imprimir" in stl:
-                accent = "#2563eb"
-            elif "postado" in stl or "envio" in stl or "correio" in stl:
-                accent = "#f59e0b"
-            else:
-                accent = "#6366f1"
+        stl = status.lower()
+        if "pend" in stl or "proble" in stl:
+            accent = "#ef4444"
+        elif "aprova" in stl:
+            accent = "#10b981"
+        elif "imprimir" in stl:
+            accent = "#2563eb"
+        elif "postado" in stl or "envio" in stl or "correio" in stl:
+            accent = "#f59e0b"
+        else:
+            accent = "#6366f1"
 
-            with rows[r][c]:
-                kpi_card(status, f"{val}", "registros no mês", accent=accent, compact=True)
+        with rows[r][c]:
+            kpi_card(status, f"{val}", "registros acumulados", accent=accent, compact=True)
