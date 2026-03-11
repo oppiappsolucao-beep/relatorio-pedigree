@@ -688,7 +688,9 @@ elif not CLEAR_COL_STATUS_VENDA or CLEAR_COL_STATUS_VENDA not in df_clear.column
     st.warning("Na aba Clear não foi encontrada a coluna 'Status Venda Pedigree'.")
 else:
     clear_tmp_venda = df_clear.copy()
-    clear_tmp_venda["_mk"] = clear_tmp_venda[CLEAR_COL_MES].apply(lambda v: parse_mes(v, fallback_year=selected_mes_venda[0]))
+    clear_tmp_venda["_mk"] = clear_tmp_venda[CLEAR_COL_MES].apply(
+        lambda v: parse_mes(v, fallback_year=selected_mes_venda[0])
+    )
     clear_tmp_venda = clear_tmp_venda[clear_tmp_venda["_mk"].notna()]
     clear_mes_venda = clear_tmp_venda[clear_tmp_venda["_mk"] == selected_mes_venda].copy()
 
