@@ -635,9 +635,9 @@ else:
             kpi_card(status, f"{val}", "registros acumulados", accent=accent, compact=True)
 
 # -------------------------------
-# Status Venda Pedigree (aba Clear • total acumulado)
+# Status Venda Pedigree (aba Clear • mês selecionado)
 # -------------------------------
-st.markdown("### Status Venda Pedigree (aba Clear • total acumulado)")
+st.markdown("### Status Venda Pedigree (aba Clear • mês selecionado)")
 
 CLEAR_COL_STATUS_VENDA = detect_col(df_clear, [
     lambda s: s == "status venda pedigree",
@@ -682,12 +682,17 @@ def _status_venda_accent(status: str) -> str:
     else:
         return "#6366f1"
 
-if not CLEAR_COL_STATUS_VENDA or CLEAR_COL_STATUS_VENDA not in df_clear.columns:
+if not CLEAR_COL_MES:
+    st.warning("Na aba Clear não foi encontrada a coluna 'Mês' para filtrar Status Venda Pedigree.")
+elif not CLEAR_COL_STATUS_VENDA or CLEAR_COL_STATUS_VENDA not in df_clear.columns:
     st.warning("Na aba Clear não foi encontrada a coluna 'Status Venda Pedigree'.")
 else:
-    clear_total_venda = df_clear.copy()
+    clear_tmp_venda = df_clear.copy()
+    clear_tmp_venda["_mk"] = clear_tmp_venda[CLEAR_COL_MES].apply(lambda v: parse_mes(v, fallback_year=selected_mes_venda[0]))
+    clear_tmp_venda = clear_tmp_venda[clear_tmp_venda["_mk"].notna()]
+    clear_mes_venda = clear_tmp_venda[clear_tmp_venda["_mk"] == selected_mes_venda].copy()
 
-    col_series_venda = clear_total_venda[CLEAR_COL_STATUS_VENDA].fillna("").astype(str).map(_norm_status_venda)
+    col_series_venda = clear_mes_venda[CLEAR_COL_STATUS_VENDA].fillna("").astype(str).map(_norm_status_venda)
     col_series_venda = col_series_venda[col_series_venda.ne("")]
 
     counts_map_venda = {}
@@ -706,4 +711,4 @@ else:
         accent = _status_venda_accent(status)
 
         with rows_venda[r][c]:
-            kpi_card(status, f"{val}", "registros acumulados", accent=accent, compact=True)
+            kpi_card(status, f"{val}", "registros no mês", accent=accent, compact=True)
