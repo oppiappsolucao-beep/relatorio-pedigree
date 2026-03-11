@@ -633,3 +633,77 @@ else:
 
         with rows[r][c]:
             kpi_card(status, f"{val}", "registros acumulados", accent=accent, compact=True)
+
+# -------------------------------
+# Status Venda Pedigree (aba Clear • total acumulado)
+# -------------------------------
+st.markdown("### Status Venda Pedigree (aba Clear • total acumulado)")
+
+CLEAR_COL_STATUS_VENDA = detect_col(df_clear, [
+    lambda s: s == "status venda pedigree",
+    lambda s: "status venda pedigree" in s,
+])
+
+STATUS_VENDA_LIST = [
+    "Vendido",
+    "Vender",
+    "Não tem interesse",
+    "Sem Resposta",
+    "Emitir Sem Venda",
+    "Conversando",
+    "Morte",
+    "Devolução",
+]
+
+def _norm_status_venda(v: str) -> str:
+    s = str(v or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+def _status_venda_accent(status: str) -> str:
+    stl = status.strip().lower()
+
+    if "vendido" in stl:
+        return "#10b981"
+    elif stl == "vender":
+        return "#9ca3af"
+    elif "não tem interesse" in stl or "nao tem interesse" in stl:
+        return "#374151"
+    elif "sem resposta" in stl:
+        return "#ef4444"
+    elif "emitir sem venda" in stl:
+        return "#3b82f6"
+    elif "conversando" in stl:
+        return "#92400e"
+    elif "morte" in stl:
+        return "#b91c1c"
+    elif "devolução" in stl or "devolucao" in stl:
+        return "#7c3aed"
+    else:
+        return "#6366f1"
+
+if not CLEAR_COL_STATUS_VENDA or CLEAR_COL_STATUS_VENDA not in df_clear.columns:
+    st.warning("Na aba Clear não foi encontrada a coluna 'Status Venda Pedigree'.")
+else:
+    clear_total_venda = df_clear.copy()
+
+    col_series_venda = clear_total_venda[CLEAR_COL_STATUS_VENDA].fillna("").astype(str).map(_norm_status_venda)
+    col_series_venda = col_series_venda[col_series_venda.ne("")]
+
+    counts_map_venda = {}
+    if not col_series_venda.empty:
+        counts_map_venda = col_series_venda.value_counts().to_dict()
+
+    total_status_venda = len(STATUS_VENDA_LIST)
+    num_cols_venda = 4
+    num_rows_venda = (total_status_venda + num_cols_venda - 1) // num_cols_venda
+    rows_venda = [st.columns(num_cols_venda) for _ in range(num_rows_venda)]
+
+    for idx, status in enumerate(STATUS_VENDA_LIST):
+        r = idx // num_cols_venda
+        c = idx % num_cols_venda
+        val = int(counts_map_venda.get(_norm_status_venda(status), 0))
+        accent = _status_venda_accent(status)
+
+        with rows_venda[r][c]:
+            kpi_card(status, f"{val}", "registros acumulados", accent=accent, compact=True)
