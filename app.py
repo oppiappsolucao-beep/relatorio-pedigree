@@ -2,12 +2,6 @@
 # Pedigree — Visão Geral (TV)
 # - Pedigree (vendas/valores): gid 583435424 (Comissão Jullia)
 # - Filhotes vendidos (KPI topo): aba Clear gid 1396326144
-#
-# FIX "NÃO ATUALIZA" (EasyPanel):
-# 1) Auto-refresh via JS adicionando querystring (_tv=timestamp) => ajuda contra cache de proxy/CDN
-# 2) Cache com TTL (60s) + cache-buster no CSV em milissegundos
-# 3) Botão "Atualizar agora" (limpa cache e re-executa)
-# 4) APP VERSION na tela (pra bater o olho e saber se o EasyPanel realmente pegou o código novo)
 
 import os
 import time
@@ -33,15 +27,13 @@ GID_COMISSAO_JULLIA = 583435424
 GID_CLEAR = 1396326144
 
 # -------------------------------
-# APP VERSION (pra validar deploy)
-# - Se você quiser, pode setar APP_VERSION nas variáveis de ambiente do EasyPanel.
-# - Se não setar, ele usa o timestamp de inicialização do processo.
+# APP VERSION
 # -------------------------------
 APP_BOOT = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 APP_VERSION = os.getenv("APP_VERSION", f"boot@{APP_BOOT}")
 
 # -------------------------------
-# Auto-refresh (TV) — ANTI-CACHE (EasyPanel/Proxy)
+# Auto-refresh (TV)
 # -------------------------------
 st.markdown(
     f"""
@@ -58,7 +50,7 @@ st.markdown(
 )
 
 # -------------------------------
-# Style (TV / cards)
+# Style
 # -------------------------------
 st.markdown(
     """
@@ -104,7 +96,6 @@ header {visibility: hidden;}
 # -------------------------------
 @st.cache_data(show_spinner=False, ttl=CACHE_TTL_SECONDS)
 def load_gid(gid: int) -> pd.DataFrame:
-    # cache-buster em MILISSEGUNDOS (evita cache agressivo)
     bust = int(time.time() * 1000)
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&gid={gid}&_={bust}"
     df = pd.read_csv(url)
@@ -154,7 +145,6 @@ def month_name_to_int(s: str):
     return None
 
 def parse_mes(v, fallback_year=None):
-    """Return (year, month) or None."""
     if pd.isna(v):
         return None
     s = str(v).strip().lower()
@@ -212,7 +202,7 @@ def detect_col(df, predicates):
     return None
 
 # -------------------------------
-# Barra topo: atualização + versão
+# Barra topo
 # -------------------------------
 top_left, top_mid, top_right = st.columns([1, 2, 3])
 with top_left:
@@ -235,7 +225,9 @@ with top_right:
 df = load_gid(GID_COMISSAO_JULLIA)
 df_clear = load_gid(GID_CLEAR)
 
+# -------------------------------
 # Columns (Comissão Jullia)
+# -------------------------------
 COL_UNIDADE = detect_col(df, [lambda s: "unidade" in s, lambda s: "loja" in s])
 COL_MES_VENDA = detect_col(df, [
     lambda s: "mês da venda" in s, lambda s: "mes da venda" in s,
@@ -251,11 +243,7 @@ COL_DATA = detect_col(df, [
     lambda s: s in ["vendas", "data", "data venda", "data da venda"],
     lambda s: ("data" in s and "venda" in s)
 ])
-
-# Valor: SEMPRE preferir a coluna "Valor"
 COL_VALOR = detect_col(df, [lambda s: s == "valor", lambda s: s.startswith("valor ")])
-
-# Produto
 COL_PRODUTO = detect_col(df, [
     lambda s: s == "produtos",
     lambda s: s == "produto",
@@ -274,6 +262,7 @@ def row_fallback_year(row):
 def get_mes_venda_key(row):
     dtv = None
     date_key = None
+
     if COL_DATA and COL_DATA in row and pd.notna(row[COL_DATA]):
         dtv = parse_date_any(row[COL_DATA])
         if dtv:
@@ -306,7 +295,6 @@ def get_mes_compra_key(row):
 
 df["_mes_venda_key"] = df.apply(get_mes_venda_key, axis=1)
 df["_mes_compra_key"] = df.apply(get_mes_compra_key, axis=1)
-
 df_valid = df[df["_mes_venda_key"].notna()].copy()
 
 def _collect_mes_venda_options(dframe):
@@ -349,7 +337,7 @@ all_mes_venda = _collect_mes_venda_options(df)
 default_month = all_mes_venda[-1] if all_mes_venda else (dt.date.today().year, dt.date.today().month)
 
 # -------------------------------
-# Filters row
+# Filters
 # -------------------------------
 st.markdown(
     """<style>
@@ -420,7 +408,7 @@ if CLEAR_COL_MES:
         filhotes_mes = len(tmp_mes)
 
 # -------------------------------
-# Core logic (Comissão Jullia)
+# Core logic
 # -------------------------------
 df_mes_venda = df_valid[df_valid["_mes_venda_key"] == selected_mes_venda].copy()
 df_mesmo_mes = df_mes_venda[df_mes_venda["_mes_compra_key"] == selected_mes_venda].copy()
@@ -454,7 +442,9 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Big KPI (filhotes)
+# -------------------------------
+# Big KPI
+# -------------------------------
 st.markdown(
     f"""
 <div class="big-kpi">
@@ -466,7 +456,7 @@ st.markdown(
 )
 
 # -------------------------------
-# Cards (linha 1)
+# Cards linha 1
 # -------------------------------
 c1, c2, c3 = st.columns(3)
 with c1:
@@ -476,7 +466,9 @@ with c2:
 with c3:
     kpi_card("Compras de outros meses", f"{q_outros}", "Mês Compra ≠ Mês Venda", accent="#ef4444")
 
-# Cards (linha 2)
+# -------------------------------
+# Cards linha 2
+# -------------------------------
 c4, c5, c6 = st.columns(3)
 with c4:
     kpi_card("Faturamento do mês (registrado)", money_br(v_total_mes_venda), "somatório do mês selecionado", accent="#6366f1")
@@ -488,7 +480,7 @@ with c6:
 st.markdown("<div class='tv-subtitle' style='margin-top:10px;'>*Obs.: se “Mês de Compra” estiver vazio, entra em “outros meses”.*</div>", unsafe_allow_html=True)
 
 # -------------------------------
-# Gráfico – Quantidade de produtos (mês selecionado)
+# Gráfico – Quantidade de produtos
 # -------------------------------
 st.markdown("### Quantidade de produtos (mês selecionado)")
 
@@ -524,7 +516,6 @@ if COL_PRODUTO and COL_PRODUTO in df_mes_venda.columns:
             showlegend=False,
         )
 
-        # sem use_container_width (evita warning)
         st.plotly_chart(fig, width="stretch")
     else:
         st.info("Nenhum produto encontrado para o mês selecionado.")
@@ -532,7 +523,7 @@ else:
     st.info("Coluna de produtos não encontrada (esperado: coluna D / 'Produtos').")
 
 # -------------------------------
-# Totais por componente (mês selecionado)
+# Totais por componente
 # -------------------------------
 st.markdown("### Totais por componente (mês selecionado)")
 
@@ -576,7 +567,7 @@ CLEAR_COL_STATUS = detect_col(df_clear, [
 
 STATUS_LIST = [
     "Fazer Pedigree Venda",
-    "Fazer Pedigree s/ trans",
+    "Fazer Predigree s/ trans",
     "Fazer RG/Certidão",
     "Pendências / Problemas",
     "Aprovação Cliente",
@@ -587,44 +578,82 @@ STATUS_LIST = [
     "Envio Correio",
     "Postado/Enviado Corr",
     "Postado/ enviado loja",
+    "Não tem Interesse",
+    "Conversando",
+    "Morte",
+    "Pendencia Cliente",
+    "Devolução",
+    "Sem Matriz",
+    "Devolução S",
 ]
 
 def _norm_status(v: str) -> str:
-    s = str(v or "").strip().lower()
+    s = str(v or "").strip()
     s = re.sub(r"\s+", " ", s)
     return s
+
+def _status_accent(status: str) -> str:
+    stl = status.strip().lower()
+
+    if "pend" in stl or "proble" in stl:
+        return "#ef4444"
+    elif "aprova" in stl:
+        return "#10b981"
+    elif "imprimir" in stl:
+        return "#2563eb"
+    elif "postado" in stl or "envio" in stl or "correio" in stl:
+        return "#f59e0b"
+    elif "interesse" in stl:
+        return "#374151"
+    elif "conversando" in stl:
+        return "#92400e"
+    elif "morte" in stl:
+        return "#b91c1c"
+    elif "devolução" in stl or "devolucao" in stl:
+        return "#a16207"
+    elif "matriz" in stl:
+        return "#dc2626"
+    elif "cliente" in stl:
+        return "#7c3aed"
+    else:
+        return "#6366f1"
 
 if not CLEAR_COL_STATUS or CLEAR_COL_STATUS not in df_clear.columns:
     st.warning("Na aba Clear não foi encontrada a coluna 'Status Pedigree'.")
 else:
     clear_total = df_clear.copy()
 
-    col_series = clear_total[CLEAR_COL_STATUS].fillna("").astype(str).str.strip()
+    col_series = clear_total[CLEAR_COL_STATUS].fillna("").astype(str).map(_norm_status)
     col_series = col_series[col_series.ne("")]
 
     counts_map = {}
     if not col_series.empty:
-        vc = col_series.map(_norm_status).value_counts()
-        counts_map = vc.to_dict()
+        counts_map = col_series.value_counts().to_dict()
 
-    rows = [st.columns(4), st.columns(4), st.columns(4)]
+    ordered_statuses = []
+    seen = set()
 
-    for idx, status in enumerate(STATUS_LIST):
-        r = idx // 4
-        c = idx % 4
-        val = int(counts_map.get(_norm_status(status), 0))
+    for status in STATUS_LIST:
+        s = _norm_status(status)
+        if s not in seen:
+            ordered_statuses.append(s)
+            seen.add(s)
 
-        stl = status.lower()
-        if "pend" in stl or "proble" in stl:
-            accent = "#ef4444"
-        elif "aprova" in stl:
-            accent = "#10b981"
-        elif "imprimir" in stl:
-            accent = "#2563eb"
-        elif "postado" in stl or "envio" in stl or "correio" in stl:
-            accent = "#f59e0b"
-        else:
-            accent = "#6366f1"
+    for status in counts_map.keys():
+        if status not in seen:
+            ordered_statuses.append(status)
+            seen.add(status)
+
+    total_status = len(ordered_statuses)
+    num_cols = 4
+    num_rows = (total_status + num_cols - 1) // num_cols
+    rows = [st.columns(num_cols) for _ in range(num_rows)]
+
+    for idx, status in enumerate(ordered_statuses):
+        r = idx // num_cols
+        c = idx % num_cols
+        val = int(counts_map.get(status, 0))
+        accent = _status_accent(status)
 
         with rows[r][c]:
             kpi_card(status, f"{val}", "registros acumulados", accent=accent, compact=True)
